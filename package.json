@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "obsidian-analog-todos",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Minimal todos and tasks inspired by Ugmonk Analog paper productivity system.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
