@@ -1,5 +1,5 @@
+import { builtinModules } from "node:module";
 import process from "node:process";
-import builtins from "builtin-modules";
 import esbuild from "esbuild";
 
 const banner = `/*
@@ -10,7 +10,7 @@ if you want to view the source, please visit the github repository of this plugi
 
 const prod = process.argv[2] === "production";
 
-const context = await esbuild.context({
+const config = {
 	banner: {
 		js: banner,
 	},
@@ -30,20 +30,19 @@ const context = await esbuild.context({
 		"@lezer/common",
 		"@lezer/highlight",
 		"@lezer/lr",
-		...builtins,
+		...builtinModules,
 	],
 	format: "cjs",
-	target: "es2018",
+	target: "es2020",
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
-	treeShaking: true,
 	outfile: "main.js",
 	minify: prod,
-});
+};
 
 if (prod) {
-	await context.rebuild();
-	process.exit(0);
+	await esbuild.build(config);
 } else {
+	const context = await esbuild.context(config);
 	await context.watch();
 }
