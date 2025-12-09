@@ -1,5 +1,7 @@
 import {
 	type App,
+	type EditorPosition,
+	MarkdownView,
 	Notice,
 	Plugin,
 	PluginSettingTab,
@@ -40,9 +42,91 @@ export default class AnalogTodosPlugin extends Plugin {
 		});
 
 		this.addSettingTab(new AnalogTodosSettingTab(this.app, this));
+
+		// Register checkbox click handler for 3-state cycling
+		// Use capture phase to intercept before Obsidian's handlers
+		this.registerDomEvent(document, "click", (evt: MouseEvent) => {
+			const target = evt.target as HTMLElement;
+			console.log("Click detected:", target);
+			if (target.matches("input.task-list-item-checkbox[data-task]")) {
+				console.log("Checkbox matched, handling click");
+				this.handleCheckboxClick(evt, target as HTMLInputElement);
+			}
+		}, { capture: true });
 	}
 
 	onunload() {}
+
+	handleCheckboxClick(evt: MouseEvent, checkbox: HTMLInputElement) {
+		const currentTask = checkbox.getAttribute("data-task");
+		console.log("Current task:", currentTask);
+		
+		// Cycle: ' ' -> '/' -> 'x' -> ' '
+		let nextTask = " ";
+		if (currentTask === " ") nextTask = "/";
+		else if (currentTask === "/") nextTask = "x";
+		else if (currentTask === "x") nextTask = " ";
+		else {
+			console.log("Unknown task type, returning");
+			return; // Unknown task type, let default behavior happen
+		}
+		
+		console.log("Next task:", nextTask);
+
+		// Prevent default toggle - stop all propagation
+		evt.preventDefault();
+		evt.stopPropagation();
+		evt.stopImmediatePropagation();
+
+		// Find the line in the editor and update it
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		console.log("View:", view, "Mode:", view?.getMode());
+		if (!view || view.getMode() !== "source") {
+			console.log("Not in source mode");
+			return;
+		}
+
+		const editor = view.editor;
+		
+		// Get the text content of the task (sibling text node or span)
+		const lineElement = checkbox.closest(".cm-line");
+		if (!lineElement) {
+			console.log("No .cm-line element found");
+			return;
+		}
+		
+		// Get the task text (content after the checkbox)
+		const taskText = lineElement.textContent?.trim() || "";
+		console.log("Task text from DOM:", taskText);
+		
+		// Search through editor lines to find matching content
+		const lineCount = editor.lineCount();
+		const taskRegex = /^(\s*- \[)(.)\](\s*)(.*)/;
+		
+		let found = false;
+		for (let i = 0; i < lineCount; i++) {
+			const editorLine = editor.getLine(i);
+			const match = editorLine.match(taskRegex);
+			
+			// Match both the task type and the task text content
+			if (match && match[2] === currentTask && match[4].trim() === taskText) {
+				console.log("Found matching line at", i, ":", editorLine);
+				const newLine = editorLine.replace(taskRegex, `$1${nextTask}]$3$4`);
+				console.log("Setting new line:", newLine);
+				editor.setLine(i, newLine);
+				
+				// Force a refresh to ensure DOM updates
+				editor.refresh();
+				
+				found = true;
+				return;
+			}
+		}
+		
+		if (!found) {
+			console.log("No matching line found. Searched", lineCount, "lines");
+		}
+	}
 
 	async createOrOpenToday() {
 		try {
@@ -74,19 +158,17 @@ export default class AnalogTodosPlugin extends Plugin {
 			}
 
 			// 4. Create new Today page with started date
-			const formattedDate = window.moment().format("dddd, MMMM D, YYYY");
 			const template = `---
 started: ${today}
 ---
 
-# Today
-
-Created: ${formattedDate}
-
 ## Priority Tasks
-- [ ]
-- [ ]
-- [ ]
+- [ ] 
+- [ ] 
+- [ ] 
+
+## In Progress
+- [/] 
 
 ## Notes
 
@@ -99,7 +181,7 @@ Created: ${formattedDate}
 			if (previousToday) {
 				new Notice(`Started new day • Previous day closed`);
 			} else {
-				new Notice(`Started ${formattedDate}`);
+				new Notice(`Started new day`);
 			}
 		} catch (error) {
 			console.error("Analog Todos: Error creating Today page", error);
