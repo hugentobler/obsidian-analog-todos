@@ -16,6 +16,10 @@ const config = {
 	},
 	entryPoints: ["main.ts"],
 	bundle: true,
+	// Strip in-source tests from production builds
+	define: {
+		"import.meta.vitest": "undefined",
+	},
 	external: [
 		"obsidian",
 		"electron",

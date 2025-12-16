@@ -7,6 +7,9 @@ import {
 	Setting,
 	type TFile,
 } from "obsidian";
+import { getTodayDate, isValidDateFormat } from "./src/utils/dates";
+import { formatTodayFileName } from "./src/utils/filenames";
+import { getNextTaskState, type TaskState } from "./src/utils/tasks";
 
 interface AnalogTodosSettings {
 	todayFolder: string;
@@ -85,9 +88,8 @@ export default class AnalogTodosPlugin extends Plugin {
 		const match = lineContent.match(taskPattern);
 		if (!match) return;
 
-		const currentState = match[2];
-		const nextState =
-			currentState === " " ? "/" : currentState === "/" ? "x" : " ";
+		const currentState = match[2] as TaskState;
+		const nextState = getNextTaskState(currentState);
 
 		editor.setLine(
 			lineNumber,
@@ -126,8 +128,8 @@ export default class AnalogTodosPlugin extends Plugin {
 
 	async createOrOpenToday() {
 		try {
-			const today = window.moment().format("YYYY-MM-DD");
-			const fileName = `Today ${today}.md`;
+			const today = getTodayDate();
+			const fileName = formatTodayFileName(today);
 			const folderPath = this.settings.todayFolder;
 			const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
 
@@ -157,7 +159,7 @@ export default class AnalogTodosPlugin extends Plugin {
 			const template = `---
 started: ${today}
 ---
-
+hello
 ### Project name
 - [ ] planned task
 - [/] in-progress task
@@ -167,6 +169,14 @@ started: ${today}
 			const file = await this.app.vault.create(filePath, template);
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(file);
+
+			// Set cursor position after file opens
+			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+			if (view?.editor) {
+				// Position cursor at line 4, column 0 (after "hello")
+				// Or use editor.setCursor({ line: 3, ch: 5 }) to position after "hello"
+				view.editor.setCursor({ line: 4, ch: 0 });
+			}
 
 			if (previousToday) {
 				new Notice(`Started new day • Previous day closed`);
@@ -207,8 +217,7 @@ started: ${today}
 				if (frontmatter.ended) continue;
 
 				// Validate date format (YYYY-MM-DD)
-				const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-				if (!datePattern.test(frontmatter.started)) continue;
+				if (!isValidDateFormat(frontmatter.started)) continue;
 
 				if (frontmatter.started >= beforeDate) continue;
 

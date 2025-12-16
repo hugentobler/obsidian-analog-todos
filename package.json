@@ -10,17 +10,20 @@
 		"lint": "biome lint .",
 		"lint:fix": "biome lint --write .",
 		"format": "biome format --write .",
-		"check": "biome check --write ."
+		"check": "biome check --write .",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"keywords": [],
 	"author": "Christopher Hugentobler",
 	"license": "MIT",
 	"devDependencies": {
-		"@biomejs/biome": "^2.3.8",
-		"@types/node": "^24.10.1",
+		"@biomejs/biome": "^2.3.9",
+		"@types/node": "^25.0.2",
 		"esbuild": "^0.27.1",
-		"obsidian": "latest",
+		"obsidian": "^1.10.3",
 		"tslib": "^2.8.1",
-		"typescript": "^5.9.3"
+		"typescript": "^5.9.3",
+		"vitest": "^4.0.16"
 	}
 }
