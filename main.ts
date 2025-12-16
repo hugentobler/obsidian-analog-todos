@@ -7,9 +7,9 @@ import {
 	Setting,
 	type TFile,
 } from "obsidian";
+import { createTriStateHandler } from "./src/ui/tri-state-handler";
 import { getTodayDate, isValidDateFormat } from "./src/utils/dates";
 import { formatTodayFileName } from "./src/utils/filenames";
-import { getNextTaskState, type TaskState } from "./src/utils/tasks";
 
 interface AnalogTodosSettings {
 	todayFolder: string;
@@ -25,13 +25,10 @@ export default class AnalogTodosPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Tri-state checkbox: capture phase intercepts before Obsidian's handler
-		this.registerDomEvent(
-			document,
-			"click",
-			(evt) => this.handleCheckboxClick(evt),
-			true,
-		);
+		// Tri-state checkboxes for files in the configured folder: [ ] → [/] → [x] → [ ]
+		// Uses document-level event delegation (capture phase) to intercept before Obsidian
+		const triStateHandler = createTriStateHandler(this.app, () => this.settings.todayFolder);
+		this.registerDomEvent(document, "click", triStateHandler, true);
 
 		// Ribbon icon to create/open Today page
 		this.addRibbonIcon(
@@ -55,76 +52,6 @@ export default class AnalogTodosPlugin extends Plugin {
 	}
 
 	onunload() {}
-
-	/**
-	 * Tri-state checkbox toggling: [ ] → [/] → [x] → [ ]
-	 *
-	 * Key implementation details:
-	 * 1. Use capture phase (3rd param = true) to intercept clicks before Obsidian
-	 * 2. Read state from markdown (not DOM) since DOM may be stale
-	 * 3. Use CodeMirror's posAtDOM() for accurate line detection (CM virtualizes DOM)
-	 * 4. Double requestAnimationFrame to sync checkbox :checked state after CM re-renders
-	 */
-	handleCheckboxClick(evt: MouseEvent) {
-		const target = evt.target as HTMLElement;
-
-		if (!(target instanceof HTMLInputElement)) return;
-		if (target.type !== "checkbox") return;
-		if (!target.classList.contains("task-list-item-checkbox")) return;
-
-		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!activeView?.editor) return;
-
-		const editor = activeView.editor;
-		const lineNumber = this.getLineNumberFromCheckbox(target, activeView);
-		if (lineNumber === null) return;
-
-		evt.preventDefault();
-		evt.stopPropagation();
-
-		// Read current state from markdown source (DOM data-task may be stale)
-		const lineContent = editor.getLine(lineNumber);
-		const taskPattern = /^(\s*- \[)([^\]])(\])/;
-		const match = lineContent.match(taskPattern);
-		if (!match) return;
-
-		const currentState = match[2] as TaskState;
-		const nextState = getNextTaskState(currentState);
-
-		editor.setLine(
-			lineNumber,
-			lineContent.replace(taskPattern, `$1${nextState}$3`),
-		);
-
-		// Sync DOM :checked state after CodeMirror re-renders
-		requestAnimationFrame(() => {
-			requestAnimationFrame(() => {
-				const checkbox = target
-					.closest(".cm-line")
-					?.querySelector(
-						"input.task-list-item-checkbox",
-					) as HTMLInputElement | null;
-				if (checkbox) checkbox.checked = nextState === "x";
-			});
-		});
-	}
-
-	/** Map DOM element to editor line number via CodeMirror's posAtDOM */
-	getLineNumberFromCheckbox(
-		checkbox: HTMLElement,
-		view: MarkdownView,
-	): number | null {
-		// @ts-expect-error - cm exists at runtime but not in type definitions
-		const cm = view.editor.cm;
-		if (!cm) return null;
-
-		try {
-			const pos = cm.posAtDOM(checkbox);
-			return cm.state.doc.lineAt(pos).number - 1; // CM is 1-indexed, Editor is 0-indexed
-		} catch {
-			return null;
-		}
-	}
 
 	async createOrOpenToday() {
 		try {

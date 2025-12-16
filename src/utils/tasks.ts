@@ -74,6 +74,54 @@ export function taskToMarkdown(task: Task): string {
 	return `${task.indent}- [${task.state}] ${task.text}`;
 }
 
+/** Result of parsing a single task line */
+export interface ParsedTaskLine {
+	state: TaskState;
+	prefix: string;  // Everything before the state char: "  - ["
+	suffix: string;  // Everything after: "] task text"
+}
+
+/** Task line regex pattern */
+const TASK_LINE_PATTERN = /^(\s*- \[)([^\]])(\].*)$/;
+
+/**
+ * Parse a single line to extract task state
+ * Returns null if line is not a task
+ */
+export function parseTaskLine(line: string): ParsedTaskLine | null {
+	const match = line.match(TASK_LINE_PATTERN);
+	if (!match) return null;
+
+	return {
+		prefix: match[1],
+		state: match[2] as TaskState,
+		suffix: match[3],
+	};
+}
+
+/**
+ * Replace task state in a line, returns new line
+ * Returns original line if not a valid task
+ */
+export function replaceTaskState(line: string, newState: TaskState): string {
+	const parsed = parseTaskLine(line);
+	if (!parsed) return line;
+
+	return `${parsed.prefix}${newState}${parsed.suffix}`;
+}
+
+/**
+ * Toggle task to next state and return new line
+ * Returns original line if not a valid task
+ */
+export function toggleTaskLine(line: string): string {
+	const parsed = parseTaskLine(line);
+	if (!parsed) return line;
+
+	const nextState = getNextTaskState(parsed.state);
+	return `${parsed.prefix}${nextState}${parsed.suffix}`;
+}
+
 // In-source tests
 if (import.meta.vitest) {
 	const { describe, it, expect } = import.meta.vitest;
@@ -176,6 +224,90 @@ Some text
 				};
 
 				expect(taskToMarkdown(task)).toBe("  - [x] completed task");
+			});
+		});
+
+		describe("parseTaskLine", () => {
+			it("parses todo task", () => {
+				const result = parseTaskLine("- [ ] my task");
+				expect(result).toEqual({
+					prefix: "- [",
+					state: " ",
+					suffix: "] my task",
+				});
+			});
+
+			it("parses completed task", () => {
+				const result = parseTaskLine("- [x] done task");
+				expect(result).toEqual({
+					prefix: "- [",
+					state: "x",
+					suffix: "] done task",
+				});
+			});
+
+			it("parses in-progress task", () => {
+				const result = parseTaskLine("- [/] wip task");
+				expect(result).toEqual({
+					prefix: "- [",
+					state: "/",
+					suffix: "] wip task",
+				});
+			});
+
+			it("parses indented task", () => {
+				const result = parseTaskLine("    - [ ] nested");
+				expect(result).toEqual({
+					prefix: "    - [",
+					state: " ",
+					suffix: "] nested",
+				});
+			});
+
+			it("returns null for non-task lines", () => {
+				expect(parseTaskLine("# Header")).toBeNull();
+				expect(parseTaskLine("- regular list")).toBeNull();
+				expect(parseTaskLine("some text")).toBeNull();
+				expect(parseTaskLine("")).toBeNull();
+			});
+		});
+
+		describe("replaceTaskState", () => {
+			it("replaces task state", () => {
+				expect(replaceTaskState("- [ ] task", "x")).toBe("- [x] task");
+				expect(replaceTaskState("- [x] task", " ")).toBe("- [ ] task");
+				expect(replaceTaskState("- [/] task", "x")).toBe("- [x] task");
+			});
+
+			it("preserves indentation", () => {
+				expect(replaceTaskState("  - [ ] nested", "/")).toBe("  - [/] nested");
+			});
+
+			it("returns original line if not a task", () => {
+				expect(replaceTaskState("not a task", "x")).toBe("not a task");
+				expect(replaceTaskState("- regular list", "x")).toBe("- regular list");
+			});
+		});
+
+		describe("toggleTaskLine", () => {
+			it("toggles through all states", () => {
+				const todo = "- [ ] task";
+				const inProgress = toggleTaskLine(todo);
+				expect(inProgress).toBe("- [/] task");
+
+				const done = toggleTaskLine(inProgress);
+				expect(done).toBe("- [x] task");
+
+				const backToTodo = toggleTaskLine(done);
+				expect(backToTodo).toBe("- [ ] task");
+			});
+
+			it("preserves task text and indentation", () => {
+				expect(toggleTaskLine("  - [ ] my important task")).toBe("  - [/] my important task");
+			});
+
+			it("returns original line if not a task", () => {
+				expect(toggleTaskLine("not a task")).toBe("not a task");
 			});
 		});
 	});
