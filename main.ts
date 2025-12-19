@@ -7,9 +7,11 @@ import {
 	Setting,
 	type TFile,
 } from "obsidian";
+import { buildTodayTemplate } from "./src/today/template";
 import { createTriStateHandler } from "./src/ui/tri-state-handler";
 import { getTodayDate, isValidDateFormat } from "./src/utils/dates";
 import { formatTodayFileName } from "./src/utils/filenames";
+import { filterIncomplete, parseTasks } from "./src/utils/tasks";
 
 interface AnalogTodosSettings {
 	todayFolder: string;
@@ -68,10 +70,16 @@ export default class AnalogTodosPlugin extends Plugin {
 				return;
 			}
 
-			// 2. Find and close the most recent unclosed Today page
+			// 2. Find previous unclosed Today page and extract incomplete tasks
 			const previousToday = await this.findMostRecentUnclosedToday(today);
+			let carriedTasks: ReturnType<typeof filterIncomplete> = [];
+
 			if (previousToday) {
+				const content = await this.app.vault.read(previousToday);
+				const allTasks = parseTasks(content);
+				carriedTasks = filterIncomplete(allTasks);
 				await this.markAsEnded(previousToday, today);
+				await this.archiveFile(previousToday);
 			}
 
 			// 3. Create folder if it doesn't exist
@@ -82,31 +90,22 @@ export default class AnalogTodosPlugin extends Plugin {
 				}
 			}
 
-			// 4. Create new Today page with started date
-			const template = `---
-started: ${today}
----
-hello
-### Project name
-- [ ] planned task
-- [/] in-progress task
-- [x] finished task
-`;
-
+			// 4. Create new Today page (with carried tasks or default template)
+			const template = buildTodayTemplate(today, carriedTasks);
 			const file = await this.app.vault.create(filePath, template);
 			const leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(file);
 
-			// Set cursor position after file opens
+			// Position cursor at end of template
 			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 			if (view?.editor) {
-				// Position cursor at line 4, column 0 (after "hello")
-				// Or use editor.setCursor({ line: 3, ch: 5 }) to position after "hello"
-				view.editor.setCursor({ line: 4, ch: 0 });
+				const lineCount = template.split("\n").length;
+				view.editor.setCursor({ line: lineCount - 1, ch: 0 });
 			}
 
-			if (previousToday) {
-				new Notice(`Started new day • Previous day closed`);
+			const taskCount = carriedTasks.length;
+			if (taskCount > 0) {
+				new Notice(`Started new day • ${taskCount} task${taskCount > 1 ? "s" : ""} carried over`);
 			} else {
 				new Notice(`Started new day`);
 			}
@@ -121,25 +120,24 @@ hello
 			const folderPath = this.settings.todayFolder;
 			const files = this.app.vault.getMarkdownFiles();
 
-			// Filter files that match Today pattern and are in the correct folder
-			const todayPattern = /^Today \d{4}-\d{2}-\d{2}\.md$/;
-			const todayFiles = files.filter((file) => {
-				const inCorrectFolder = folderPath
-					? file.path.startsWith(`${folderPath}/`)
-					: !file.path.contains("/");
-				const matchesPattern = todayPattern.test(file.name);
-				return inCorrectFolder && matchesPattern;
+			// Filter files in the correct folder (not in Archive subfolder)
+			const folderFiles = files.filter((file) => {
+				if (folderPath) {
+					return file.path.startsWith(`${folderPath}/`) && 
+						!file.path.startsWith(`${folderPath}/Archive/`);
+				}
+				return !file.path.includes("/");
 			});
 
-			// Find unclosed Today pages (has started, no ended, and started < today)
+			// Find unclosed Today pages by frontmatter (has started, no ended, started < today)
 			let mostRecent: TFile | null = null;
 			let mostRecentDate = "";
 
-			for (const file of todayFiles) {
+			for (const file of folderFiles) {
 				const cache = this.app.metadataCache.getFileCache(file);
 				const frontmatter = cache?.frontmatter;
 
-				// Defensive: only consider files with proper frontmatter structure
+				// Identify Today files by frontmatter, not filename
 				if (!frontmatter?.started) continue;
 				if (frontmatter.ended) continue;
 
@@ -173,6 +171,26 @@ hello
 			});
 		} catch (error) {
 			console.error(`Analog Todos: Error marking ${file.name} as ended`, error);
+			// Don't throw - just log and continue
+		}
+	}
+
+	async archiveFile(file: TFile) {
+		try {
+			const folderPath = this.settings.todayFolder;
+			const archivePath = folderPath ? `${folderPath}/Archive` : "Archive";
+
+			// Create archives folder if it doesn't exist
+			const archiveFolder = this.app.vault.getAbstractFileByPath(archivePath);
+			if (!archiveFolder) {
+				await this.app.vault.createFolder(archivePath);
+			}
+
+			// Move file to archives
+			const newPath = `${archivePath}/${file.name}`;
+			await this.app.fileManager.renameFile(file, newPath);
+		} catch (error) {
+			console.error(`Analog Todos: Error archiving ${file.name}`, error);
 			// Don't throw - just log and continue
 		}
 	}
