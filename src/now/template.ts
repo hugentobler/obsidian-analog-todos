@@ -31,7 +31,7 @@ export function buildNowTemplate(
 
 	// Group tasks by header, preserving order
 	const lines: string[] = [];
-	let lastHeader: string | null | undefined = undefined; // Track header changes
+	let lastHeader: string | null | undefined; // Track header changes
 
 	for (const task of rolledTasks) {
 		// Output header when it changes (including from null to header or header to null)
@@ -65,8 +65,22 @@ if (import.meta.vitest) {
 
 		it("includes rolled tasks", () => {
 			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "todo task", indent: "", raw: "", header: null },
-				{ line: 1, state: "/", text: "in progress", indent: "", raw: "", header: null },
+				{
+					line: 0,
+					state: " ",
+					text: "todo task",
+					indent: "",
+					raw: "",
+					header: null,
+				},
+				{
+					line: 1,
+					state: "/",
+					text: "in progress",
+					indent: "",
+					raw: "",
+					header: null,
+				},
 			];
 			const result = buildNowTemplate("2024-12-18", tasks);
 
@@ -78,8 +92,22 @@ if (import.meta.vitest) {
 
 		it("preserves task indentation", () => {
 			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "parent", indent: "", raw: "", header: null },
-				{ line: 1, state: "/", text: "child", indent: "  ", raw: "", header: null },
+				{
+					line: 0,
+					state: " ",
+					text: "parent",
+					indent: "",
+					raw: "",
+					header: null,
+				},
+				{
+					line: 1,
+					state: "/",
+					text: "child",
+					indent: "  ",
+					raw: "",
+					header: null,
+				},
 			];
 			const result = buildNowTemplate("2024-12-18", tasks);
 
@@ -89,9 +117,30 @@ if (import.meta.vitest) {
 
 		it("includes headers directly preceding tasks", () => {
 			const tasks: Task[] = [
-				{ line: 1, state: " ", text: "task 1", indent: "", raw: "", header: "### Project A" },
-				{ line: 2, state: "/", text: "task 2", indent: "", raw: "", header: "### Project A" },
-				{ line: 5, state: " ", text: "task 3", indent: "", raw: "", header: "### Project B" },
+				{
+					line: 1,
+					state: " ",
+					text: "task 1",
+					indent: "",
+					raw: "",
+					header: "### Project A",
+				},
+				{
+					line: 2,
+					state: "/",
+					text: "task 2",
+					indent: "",
+					raw: "",
+					header: "### Project A",
+				},
+				{
+					line: 5,
+					state: " ",
+					text: "task 3",
+					indent: "",
+					raw: "",
+					header: "### Project B",
+				},
 			];
 			const result = buildNowTemplate("2024-12-18", tasks);
 
@@ -104,8 +153,22 @@ if (import.meta.vitest) {
 
 		it("handles mix of tasks with and without headers", () => {
 			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "orphan task", indent: "", raw: "", header: null },
-				{ line: 3, state: " ", text: "project task", indent: "", raw: "", header: "### My Project" },
+				{
+					line: 0,
+					state: " ",
+					text: "orphan task",
+					indent: "",
+					raw: "",
+					header: null,
+				},
+				{
+					line: 3,
+					state: " ",
+					text: "project task",
+					indent: "",
+					raw: "",
+					header: "### My Project",
+				},
 			];
 			const result = buildNowTemplate("2024-12-18", tasks);
 

@@ -1,5 +1,7 @@
 import { MarkdownView, Notice, Plugin, type TFile } from "obsidian";
+import { registerCheckboxes } from "./src/checkboxes";
 import { registerCommands } from "./src/commands";
+import { registerMenus } from "./src/menus";
 import { buildNowTemplate } from "./src/now/template";
 import { registerRibbonActions } from "./src/ribbon-actions";
 import {
@@ -7,7 +9,6 @@ import {
 	type RollSettings,
 	registerSettings,
 } from "./src/settings";
-import { registerCheckboxes } from "./src/checkboxes";
 import { getTodayDate } from "./src/utils/dates";
 import { formatNowFileName } from "./src/utils/filenames";
 import { filterIncomplete, parseTasks } from "./src/utils/tasks";
@@ -21,6 +22,7 @@ export default class RollPlugin extends Plugin {
 		registerCheckboxes(this);
 		registerRibbonActions(this);
 		registerCommands(this);
+		registerMenus(this);
 		registerSettings(this);
 	}
 
@@ -111,10 +113,10 @@ export default class RollPlugin extends Plugin {
 			const taskCount = rolledTasks.length;
 			if (taskCount > 0) {
 				new Notice(
-					`Rolled over • ${taskCount} task${taskCount > 1 ? "s" : ""} rolled forward`,
+					`Created new Now Page • ${taskCount} task${taskCount > 1 ? "s" : ""} rolled forward`,
 				);
 			} else {
-				new Notice("Rolled over • No tasks rolled forward");
+				new Notice("Created new Now Page • No tasks rolled forward");
 			}
 		} catch (error) {
 			console.error("Roll: Error rolling over Now page", error);
@@ -152,7 +154,7 @@ export default class RollPlugin extends Plugin {
 		}
 
 		if (rolledTasks.length === 0) {
-			new Notice("Started new Now page");
+			new Notice("Created new Now page");
 		}
 	}
 
