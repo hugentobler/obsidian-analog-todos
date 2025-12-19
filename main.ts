@@ -29,7 +29,10 @@ export default class AnalogTodosPlugin extends Plugin {
 
 		// Tri-state checkboxes for files in the configured folder: [ ] → [/] → [x] → [ ]
 		// Uses document-level event delegation (capture phase) to intercept before Obsidian
-		const triStateHandler = createTriStateHandler(this.app, () => this.settings.todayFolder);
+		const triStateHandler = createTriStateHandler(
+			this.app,
+			() => this.settings.todayFolder,
+		);
 		this.registerDomEvent(document, "click", triStateHandler, true);
 
 		// Ribbon icon to create/open Today page
@@ -58,31 +61,33 @@ export default class AnalogTodosPlugin extends Plugin {
 	async createOrOpenToday() {
 		try {
 			const today = getTodayDate();
-			const fileName = formatTodayFileName(today);
 			const folderPath = this.settings.todayFolder;
-			const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
 
-			// 1. Check if today's file already exists
-			const existingFile = this.app.vault.getAbstractFileByPath(filePath);
-			if (existingFile) {
+			// 1. Find today's file and previous unclosed
+			const { todayFile, previousUnclosed } = await this.findTodayFiles(today);
+
+			if (todayFile) {
 				const leaf = this.app.workspace.getLeaf(false);
-				await leaf.openFile(existingFile as TFile);
+				await leaf.openFile(todayFile);
 				return;
 			}
 
-			// 2. Find previous unclosed Today page and extract incomplete tasks
-			const previousToday = await this.findMostRecentUnclosedToday(today);
+			// 2. Generate path for new file
+			const fileName = formatTodayFileName(today);
+			const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
+
+			// 3. Extract incomplete tasks from previous unclosed
 			let carriedTasks: ReturnType<typeof filterIncomplete> = [];
 
-			if (previousToday) {
-				const content = await this.app.vault.read(previousToday);
+			if (previousUnclosed) {
+				const content = await this.app.vault.read(previousUnclosed);
 				const allTasks = parseTasks(content);
 				carriedTasks = filterIncomplete(allTasks);
-				await this.markAsEnded(previousToday, today);
-				await this.archiveFile(previousToday);
+				await this.markAsEnded(previousUnclosed, today);
+				await this.archiveFile(previousUnclosed);
 			}
 
-			// 3. Create folder if it doesn't exist
+			// 4. Create folder if it doesn't exist
 			if (folderPath) {
 				const folder = this.app.vault.getAbstractFileByPath(folderPath);
 				if (!folder) {
@@ -90,7 +95,7 @@ export default class AnalogTodosPlugin extends Plugin {
 				}
 			}
 
-			// 4. Create new Today page (with carried tasks or default template)
+			// 5. Create new Today page (with carried tasks or default template)
 			const template = buildTodayTemplate(today, carriedTasks);
 			const file = await this.app.vault.create(filePath, template);
 			const leaf = this.app.workspace.getLeaf(false);
@@ -105,7 +110,9 @@ export default class AnalogTodosPlugin extends Plugin {
 
 			const taskCount = carriedTasks.length;
 			if (taskCount > 0) {
-				new Notice(`Started new day • ${taskCount} task${taskCount > 1 ? "s" : ""} carried over`);
+				new Notice(
+					`Started new day • ${taskCount} task${taskCount > 1 ? "s" : ""} carried over`,
+				);
 			} else {
 				new Notice(`Started new day`);
 			}
@@ -115,49 +122,56 @@ export default class AnalogTodosPlugin extends Plugin {
 		}
 	}
 
-	async findMostRecentUnclosedToday(beforeDate: string): Promise<TFile | null> {
-		try {
-			const folderPath = this.settings.todayFolder;
-			const files = this.app.vault.getMarkdownFiles();
+	/**
+	 * Find Today files in one pass:
+	 * - todayFile: file with started === today
+	 * - previousUnclosed: most recent file with started < today and no ended
+	 */
+	async findTodayFiles(today: string): Promise<{
+		todayFile: TFile | null;
+		previousUnclosed: TFile | null;
+	}> {
+		const folderPath = this.settings.todayFolder;
+		const files = this.app.vault.getMarkdownFiles();
 
-			// Filter files in the correct folder (not in Archive subfolder)
-			const folderFiles = files.filter((file) => {
-				if (folderPath) {
-					return file.path.startsWith(`${folderPath}/`) && 
-						!file.path.startsWith(`${folderPath}/Archive/`);
-				}
-				return !file.path.includes("/");
-			});
+		// Filter files in the correct folder (not in Archive subfolder)
+		const folderFiles = files.filter((file) => {
+			if (folderPath) {
+				return (
+					file.path.startsWith(`${folderPath}/`) &&
+					!file.path.startsWith(`${folderPath}/Archive/`)
+				);
+			}
+			return !file.path.includes("/");
+		});
 
-			// Find unclosed Today pages by frontmatter (has started, no ended, started < today)
-			let mostRecent: TFile | null = null;
-			let mostRecentDate = "";
+		let todayFile: TFile | null = null;
+		let previousUnclosed: TFile | null = null;
+		let previousUnclosedDate = "";
 
-			for (const file of folderFiles) {
-				const cache = this.app.metadataCache.getFileCache(file);
-				const frontmatter = cache?.frontmatter;
+		for (const file of folderFiles) {
+			const cache = this.app.metadataCache.getFileCache(file);
+			const frontmatter = cache?.frontmatter;
 
-				// Identify Today files by frontmatter, not filename
-				if (!frontmatter?.started) continue;
-				if (frontmatter.ended) continue;
+			if (!frontmatter?.started) continue;
+			if (!isValidDateFormat(frontmatter.started)) continue;
 
-				// Validate date format (YYYY-MM-DD)
-				if (!isValidDateFormat(frontmatter.started)) continue;
-
-				if (frontmatter.started >= beforeDate) continue;
-
-				// Track most recent
-				if (frontmatter.started > mostRecentDate) {
-					mostRecentDate = frontmatter.started;
-					mostRecent = file;
-				}
+			// Check for today's file
+			if (frontmatter.started === today) {
+				todayFile = file;
+				continue;
 			}
 
-			return mostRecent;
-		} catch (error) {
-			console.error("Analog Todos: Error finding unclosed Today pages", error);
-			return null;
+			// Check for previous unclosed (started < today, no ended)
+			if (!frontmatter.ended && frontmatter.started < today) {
+				if (frontmatter.started > previousUnclosedDate) {
+					previousUnclosedDate = frontmatter.started;
+					previousUnclosed = file;
+				}
+			}
 		}
+
+		return { todayFile, previousUnclosed };
 	}
 
 	async markAsEnded(file: TFile, endDate: string) {

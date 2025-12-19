@@ -11,29 +11,58 @@ export interface Task {
 	text: string;
 	indent: string;
 	raw: string;
+	header: string | null; // Header directly preceding this task group
 }
+
+/** Header pattern - any markdown header level */
+const HEADER_PATTERN = /^#{1,6}\s+.+$/;
+
+/** Task pattern */
+const TASK_PATTERN = /^(\s*)- \[([^\]])\]\s*(.*)$/;
 
 /**
  * Parse tasks from markdown content
- * Matches pattern: "- [ ] task text" or "  - [x] nested task"
+ * Tracks headers directly preceding task groups
  */
 export function parseTasks(content: string): Task[] {
 	const tasks: Task[] = [];
 	const lines = content.split("\n");
 
+	let currentHeader: string | null = null;
+	let headerValid = false; // True if only blank lines/tasks since header
+
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		const match = line.match(/^(\s*)- \[([^\]])\]\s*(.*)$/);
+		const trimmed = line.trim();
 
-		if (match) {
+		// Check for header
+		if (HEADER_PATTERN.test(line)) {
+			currentHeader = line;
+			headerValid = true;
+			continue;
+		}
+
+		// Check for task
+		const taskMatch = line.match(TASK_PATTERN);
+		if (taskMatch) {
 			tasks.push({
 				line: i,
-				indent: match[1],
-				state: match[2] as TaskState,
-				text: match[3],
+				indent: taskMatch[1],
+				state: taskMatch[2] as TaskState,
+				text: taskMatch[3],
 				raw: line,
+				header: headerValid ? currentHeader : null,
 			});
+			continue;
 		}
+
+		// Blank line - doesn't break header association
+		if (trimmed === "") {
+			continue;
+		}
+
+		// Any other content breaks header association
+		headerValid = false;
 	}
 
 	return tasks;
@@ -102,9 +131,9 @@ if (import.meta.vitest) {
 			const tasks = parseTasks(content);
 
 			expect(tasks).toHaveLength(3);
-			expect(tasks[0]).toMatchObject({ state: " ", text: "todo" });
-			expect(tasks[1]).toMatchObject({ state: "x", text: "done" });
-			expect(tasks[2]).toMatchObject({ state: "/", text: "in progress" });
+			expect(tasks[0]).toMatchObject({ state: " ", text: "todo", header: null });
+			expect(tasks[1]).toMatchObject({ state: "x", text: "done", header: null });
+			expect(tasks[2]).toMatchObject({ state: "/", text: "in progress", header: null });
 		});
 
 		it("parses indented tasks and preserves line numbers", () => {
@@ -112,25 +141,51 @@ if (import.meta.vitest) {
 			const tasks = parseTasks(content);
 
 			expect(tasks).toHaveLength(2);
-			expect(tasks[0]).toMatchObject({ line: 1, indent: "" });
-			expect(tasks[1]).toMatchObject({ line: 2, indent: "  " });
+			expect(tasks[0]).toMatchObject({ line: 1, indent: "", header: "# Header" });
+			expect(tasks[1]).toMatchObject({ line: 2, indent: "  ", header: "# Header" });
 		});
 
-		it("ignores non-task lines", () => {
-			const content = "# Header\n- regular list\n- [ ] actual task";
+		it("tracks headers directly preceding tasks", () => {
+			const content = "### Project A\n- [ ] task 1\n- [ ] task 2";
+			const tasks = parseTasks(content);
+
+			expect(tasks).toHaveLength(2);
+			expect(tasks[0].header).toBe("### Project A");
+			expect(tasks[1].header).toBe("### Project A");
+		});
+
+		it("breaks header association when other content intervenes", () => {
+			const content = "### Project A\nSome notes\n- [ ] task 1";
 			const tasks = parseTasks(content);
 
 			expect(tasks).toHaveLength(1);
-			expect(tasks[0].text).toBe("actual task");
+			expect(tasks[0].header).toBeNull();
+		});
+
+		it("allows blank lines between header and tasks", () => {
+			const content = "### Project A\n\n\n- [ ] task 1";
+			const tasks = parseTasks(content);
+
+			expect(tasks).toHaveLength(1);
+			expect(tasks[0].header).toBe("### Project A");
+		});
+
+		it("handles multiple headers", () => {
+			const content = "### A\n- [ ] task a\n### B\n- [ ] task b";
+			const tasks = parseTasks(content);
+
+			expect(tasks).toHaveLength(2);
+			expect(tasks[0].header).toBe("### A");
+			expect(tasks[1].header).toBe("### B");
 		});
 	});
 
 	describe("filterIncomplete", () => {
 		it("filters only incomplete tasks", () => {
 			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "todo", indent: "", raw: "" },
-				{ line: 1, state: "x", text: "done", indent: "", raw: "" },
-				{ line: 2, state: "/", text: "wip", indent: "", raw: "" },
+				{ line: 0, state: " ", text: "todo", indent: "", raw: "", header: null },
+				{ line: 1, state: "x", text: "done", indent: "", raw: "", header: null },
+				{ line: 2, state: "/", text: "wip", indent: "", raw: "", header: null },
 			];
 
 			const incomplete = filterIncomplete(tasks);
@@ -155,6 +210,7 @@ if (import.meta.vitest) {
 				text: "in progress",
 				indent: "  ",
 				raw: "",
+				header: null,
 			};
 			expect(taskToMarkdown(task)).toBe("  - [/] in progress");
 		});
