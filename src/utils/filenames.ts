@@ -1,5 +1,5 @@
 /**
- * Filename utility functions for Analog Todos
+ * Filename utility functions
  * Pure functions - no Obsidian dependencies
  */
 

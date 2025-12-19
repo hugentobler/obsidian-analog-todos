@@ -1,9 +1,9 @@
 {
-	"id": "analog-todos",
-	"name": "Analog Todos",
+	"id": "roll",
+	"name": "Roll",
 	"version": "1.0.0",
 	"minAppVersion": "1.10.0",
-	"description": "Minimal todos and tasks inspired by Ugmonk Analog paper productivity system.",
+	"description": "One-page todo list. Three states. No due dates. Unfinished tasks roll forward.",
 	"author": "Christopher Hugentobler",
 	"authorUrl": "https://github.com/hugentobler",
 	"isDesktopOnly": false

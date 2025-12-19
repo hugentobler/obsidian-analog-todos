@@ -13,16 +13,16 @@ import { getTodayDate, isValidDateFormat } from "./src/utils/dates";
 import { formatTodayFileName } from "./src/utils/filenames";
 import { filterIncomplete, parseTasks } from "./src/utils/tasks";
 
-interface AnalogTodosSettings {
+interface RollSettings {
 	todayFolder: string;
 }
 
-const DEFAULT_SETTINGS: AnalogTodosSettings = {
-	todayFolder: "Analog",
+const DEFAULT_SETTINGS: RollSettings = {
+	todayFolder: "Roll",
 };
 
-export default class AnalogTodosPlugin extends Plugin {
-	settings: AnalogTodosSettings;
+export default class RollPlugin extends Plugin {
+	settings: RollSettings;
 
 	async onload() {
 		await this.loadSettings();
@@ -53,7 +53,7 @@ export default class AnalogTodosPlugin extends Plugin {
 			},
 		});
 
-		this.addSettingTab(new AnalogTodosSettingTab(this.app, this));
+		this.addSettingTab(new RollSettingTab(this.app, this));
 	}
 
 	onunload() {}
@@ -117,7 +117,7 @@ export default class AnalogTodosPlugin extends Plugin {
 				new Notice(`Started new day`);
 			}
 		} catch (error) {
-			console.error("Analog Todos: Error creating Today page", error);
+			console.error("Roll: Error creating Today page", error);
 			new Notice("Error creating Today page. Check console for details.");
 		}
 	}
@@ -184,7 +184,7 @@ export default class AnalogTodosPlugin extends Plugin {
 				}
 			});
 		} catch (error) {
-			console.error(`Analog Todos: Error marking ${file.name} as ended`, error);
+			console.error(`Roll: Error marking ${file.name} as ended`, error);
 			// Don't throw - just log and continue
 		}
 	}
@@ -204,7 +204,7 @@ export default class AnalogTodosPlugin extends Plugin {
 			const newPath = `${archivePath}/${file.name}`;
 			await this.app.fileManager.renameFile(file, newPath);
 		} catch (error) {
-			console.error(`Analog Todos: Error archiving ${file.name}`, error);
+			console.error(`Roll: Error archiving ${file.name}`, error);
 			// Don't throw - just log and continue
 		}
 	}
@@ -218,10 +218,10 @@ export default class AnalogTodosPlugin extends Plugin {
 	}
 }
 
-class AnalogTodosSettingTab extends PluginSettingTab {
-	plugin: AnalogTodosPlugin;
+class RollSettingTab extends PluginSettingTab {
+	plugin: RollPlugin;
 
-	constructor(app: App, plugin: AnalogTodosPlugin) {
+	constructor(app: App, plugin: RollPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -231,7 +231,7 @@ class AnalogTodosSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Analog Todos Settings" });
+		containerEl.createEl("h2", { text: "Roll" });
 
 		new Setting(containerEl)
 			.setName("Today folder")
@@ -240,7 +240,7 @@ class AnalogTodosSettingTab extends PluginSettingTab {
 			)
 			.addText((text) =>
 				text
-					.setPlaceholder("Example: Analog")
+					.setPlaceholder("Example: Roll")
 					.setValue(this.plugin.settings.todayFolder)
 					.onChange(async (value) => {
 						this.plugin.settings.todayFolder = value;

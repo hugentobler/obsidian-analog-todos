@@ -1,5 +1,5 @@
 /**
- * Date utility functions for Analog Todos
+ * Date utility functions
  * Pure functions - no Obsidian dependencies
  */
 

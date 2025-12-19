@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-analog-todos",
+	"name": "obsidian-roll",
 	"version": "1.0.0",
-	"description": "Minimal todos and tasks inspired by Ugmonk Analog paper productivity system.",
+	"description": "One-page todo list. Three states. No due dates. Unfinished tasks roll forward.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
