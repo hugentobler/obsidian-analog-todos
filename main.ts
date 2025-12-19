@@ -1,25 +1,16 @@
+import { MarkdownView, Notice, Plugin, type TFile } from "obsidian";
+import { registerCommands } from "./src/commands";
+import { buildNowTemplate } from "./src/now/template";
+import { registerRibbonActions } from "./src/ribbon-actions";
 import {
-	type App,
-	MarkdownView,
-	Notice,
-	Plugin,
-	PluginSettingTab,
-	Setting,
-	type TFile,
-} from "obsidian";
-import { buildTodayTemplate } from "./src/today/template";
-import { createTriStateHandler } from "./src/ui/tri-state-handler";
-import { getTodayDate, isValidDateFormat } from "./src/utils/dates";
-import { formatTodayFileName } from "./src/utils/filenames";
+	DEFAULT_SETTINGS,
+	type RollSettings,
+	registerSettings,
+} from "./src/settings";
+import { registerCheckboxes } from "./src/checkboxes";
+import { getTodayDate } from "./src/utils/dates";
+import { formatNowFileName } from "./src/utils/filenames";
 import { filterIncomplete, parseTasks } from "./src/utils/tasks";
-
-interface RollSettings {
-	todayFolder: string;
-}
-
-const DEFAULT_SETTINGS: RollSettings = {
-	todayFolder: "Roll",
-};
 
 export default class RollPlugin extends Plugin {
 	settings: RollSettings;
@@ -27,185 +18,187 @@ export default class RollPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// Tri-state checkboxes for files in the configured folder: [ ] → [/] → [x] → [ ]
-		// Uses document-level event delegation (capture phase) to intercept before Obsidian
-		const triStateHandler = createTriStateHandler(
-			this.app,
-			() => this.settings.todayFolder,
-		);
-		this.registerDomEvent(document, "click", triStateHandler, true);
-
-		// Ribbon icon to create/open Today page
-		this.addRibbonIcon(
-			"check-circle",
-			"Open Today",
-			async (_evt: MouseEvent) => {
-				await this.createOrOpenToday();
-			},
-		);
-
-		// Command to create/open Today page
-		this.addCommand({
-			id: "open-today",
-			name: "Open Today",
-			callback: async () => {
-				await this.createOrOpenToday();
-			},
-		});
-
-		this.addSettingTab(new RollSettingTab(this.app, this));
+		registerCheckboxes(this);
+		registerRibbonActions(this);
+		registerCommands(this);
+		registerSettings(this);
 	}
 
 	onunload() {}
 
-	async createOrOpenToday() {
+	/**
+	 * Get the path to Now.md
+	 */
+	getNowFilePath(): string {
+		const folderPath = this.settings.rollFolder;
+		return folderPath ? `${folderPath}/Now.md` : "Now.md";
+	}
+
+	/**
+	 * Get the existing Now.md file and its frontmatter, or null if it doesn't exist
+	 */
+	getNowFile(): { file: TFile; started?: string; ended?: string } | null {
+		const filePath = this.getNowFilePath();
+		const file = this.app.vault.getAbstractFileByPath(filePath);
+		if (
+			!(
+				file instanceof Object &&
+				"extension" in file &&
+				file.extension === "md"
+			)
+		) {
+			return null;
+		}
+		const tFile = file as TFile;
+		const cache = this.app.metadataCache.getFileCache(tFile);
+		const frontmatter = cache?.frontmatter;
+		return {
+			file: tFile,
+			started: frontmatter?.started,
+			ended: frontmatter?.ended,
+		};
+	}
+
+	/**
+	 * Open Now.md, creating it if it doesn't exist
+	 */
+	async openNow() {
 		try {
-			const today = getTodayDate();
-			const folderPath = this.settings.todayFolder;
+			const now = this.getNowFile();
 
-			// 1. Find today's file and previous unclosed
-			const { todayFile, previousUnclosed } = await this.findTodayFiles(today);
-
-			if (todayFile) {
+			if (now) {
 				const leaf = this.app.workspace.getLeaf(false);
-				await leaf.openFile(todayFile);
+				await leaf.openFile(now.file);
+				const dateDisplay = now.started ?? "unknown start date";
+				new Notice(`Opened Now page from ${dateDisplay}`);
 				return;
 			}
 
-			// 2. Generate path for new file
-			const fileName = formatTodayFileName(today);
-			const filePath = folderPath ? `${folderPath}/${fileName}` : fileName;
-
-			// 3. Extract incomplete tasks from previous unclosed
-			let carriedTasks: ReturnType<typeof filterIncomplete> = [];
-
-			if (previousUnclosed) {
-				const content = await this.app.vault.read(previousUnclosed);
-				const allTasks = parseTasks(content);
-				carriedTasks = filterIncomplete(allTasks);
-				await this.markAsEnded(previousUnclosed, today);
-				await this.archiveFile(previousUnclosed);
-			}
-
-			// 4. Create folder if it doesn't exist
-			if (folderPath) {
-				const folder = this.app.vault.getAbstractFileByPath(folderPath);
-				if (!folder) {
-					await this.app.vault.createFolder(folderPath);
-				}
-			}
-
-			// 5. Create new Today page (with carried tasks or default template)
-			const template = buildTodayTemplate(today, carriedTasks);
-			const file = await this.app.vault.create(filePath, template);
-			const leaf = this.app.workspace.getLeaf(false);
-			await leaf.openFile(file);
-
-			// Position cursor at end of template
-			const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (view?.editor) {
-				const lineCount = template.split("\n").length;
-				view.editor.setCursor({ line: lineCount - 1, ch: 0 });
-			}
-
-			const taskCount = carriedTasks.length;
-			if (taskCount > 0) {
-				new Notice(
-					`Started new day • ${taskCount} task${taskCount > 1 ? "s" : ""} carried over`,
-				);
-			} else {
-				new Notice(`Started new day`);
-			}
+			// Create new Now.md
+			await this.createNowFile();
 		} catch (error) {
-			console.error("Roll: Error creating Today page", error);
-			new Notice("Error creating Today page. Check console for details.");
+			console.error("Roll: Error opening Now page", error);
+			new Notice("Error opening Now page. Check console for details.");
 		}
 	}
 
 	/**
-	 * Find Today files in one pass:
-	 * - todayFile: file with started === today
-	 * - previousUnclosed: most recent file with started < today and no ended
+	 * Rollover: archive current Now.md and create a new one with rolled over tasks
 	 */
-	async findTodayFiles(today: string): Promise<{
-		todayFile: TFile | null;
-		previousUnclosed: TFile | null;
-	}> {
-		const folderPath = this.settings.todayFolder;
-		const files = this.app.vault.getMarkdownFiles();
+	async rolloverNow() {
+		try {
+			const now = this.getNowFile();
 
-		// Filter files in the correct folder (not in Archive subfolder)
-		const folderFiles = files.filter((file) => {
-			if (folderPath) {
-				return (
-					file.path.startsWith(`${folderPath}/`) &&
-					!file.path.startsWith(`${folderPath}/Archive/`)
+			if (!now) {
+				new Notice("No Now page to rollover. Use 'Open Now' first.");
+				return;
+			}
+
+			const today = getTodayDate();
+
+			// Extract incomplete tasks from current Now
+			const content = await this.app.vault.read(now.file);
+			const allTasks = parseTasks(content);
+			const rolledTasks = filterIncomplete(allTasks);
+
+			// Mark as ended and archive
+			await this.markAsEnded(now.file, today);
+			await this.archiveFile(now.file, now.started);
+
+			// Create new Now.md with rolled over tasks
+			await this.createNowFile(rolledTasks);
+
+			const taskCount = rolledTasks.length;
+			if (taskCount > 0) {
+				new Notice(
+					`Rolled over • ${taskCount} task${taskCount > 1 ? "s" : ""} rolled forward`,
 				);
+			} else {
+				new Notice("Rolled over • No tasks rolled forward");
 			}
-			return !file.path.includes("/");
-		});
+		} catch (error) {
+			console.error("Roll: Error rolling over Now page", error);
+			new Notice("Error rolling over Now page. Check console for details.");
+		}
+	}
 
-		let todayFile: TFile | null = null;
-		let previousUnclosed: TFile | null = null;
-		let previousUnclosedDate = "";
+	/**
+	 * Create a new Now.md file with optional rolled over tasks
+	 */
+	async createNowFile(rolledTasks: ReturnType<typeof filterIncomplete> = []) {
+		const folderPath = this.settings.rollFolder;
+		const filePath = this.getNowFilePath();
+		const today = getTodayDate();
 
-		for (const file of folderFiles) {
-			const cache = this.app.metadataCache.getFileCache(file);
-			const frontmatter = cache?.frontmatter;
-
-			if (!frontmatter?.started) continue;
-			if (!isValidDateFormat(frontmatter.started)) continue;
-
-			// Check for today's file
-			if (frontmatter.started === today) {
-				todayFile = file;
-				continue;
-			}
-
-			// Check for previous unclosed (started < today, no ended)
-			if (!frontmatter.ended && frontmatter.started < today) {
-				if (frontmatter.started > previousUnclosedDate) {
-					previousUnclosedDate = frontmatter.started;
-					previousUnclosed = file;
-				}
+		// Create folder if it doesn't exist
+		if (folderPath) {
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!folder) {
+				await this.app.vault.createFolder(folderPath);
 			}
 		}
 
-		return { todayFile, previousUnclosed };
+		// Create new Now page
+		const template = buildNowTemplate(today, rolledTasks);
+		const file = await this.app.vault.create(filePath, template);
+		const leaf = this.app.workspace.getLeaf(false);
+		await leaf.openFile(file);
+
+		// Position cursor at end of template
+		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+		if (view?.editor) {
+			const lineCount = template.split("\n").length;
+			view.editor.setCursor({ line: lineCount - 1, ch: 0 });
+		}
+
+		if (rolledTasks.length === 0) {
+			new Notice("Started new Now page");
+		}
 	}
 
+	/**
+	 * Add ended date to frontmatter
+	 */
 	async markAsEnded(file: TFile, endDate: string) {
 		try {
 			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				// Defensive: only add ended if it doesn't already exist
-				// and the frontmatter has a valid started date
 				if (!frontmatter.ended && frontmatter.started) {
 					frontmatter.ended = endDate;
 				}
 			});
 		} catch (error) {
 			console.error(`Roll: Error marking ${file.name} as ended`, error);
-			// Don't throw - just log and continue
 		}
 	}
 
-	async archiveFile(file: TFile) {
+	/**
+	 * Archive file: rename with started date and move to Archive folder
+	 */
+	async archiveFile(file: TFile, startedDate?: string) {
 		try {
-			const folderPath = this.settings.todayFolder;
-			const archivePath = folderPath ? `${folderPath}/Archive` : "Archive";
+			const rollFolder = this.settings.rollFolder;
+			const archiveFolder = this.settings.archiveFolder;
+			const archivePath = rollFolder
+				? `${rollFolder}/${archiveFolder}`
+				: archiveFolder;
 
-			// Create archives folder if it doesn't exist
-			const archiveFolder = this.app.vault.getAbstractFileByPath(archivePath);
-			if (!archiveFolder) {
+			// Create archive folder if it doesn't exist
+			const existingArchiveFolder =
+				this.app.vault.getAbstractFileByPath(archivePath);
+			if (!existingArchiveFolder) {
 				await this.app.vault.createFolder(archivePath);
 			}
 
-			// Move file to archives
-			const newPath = `${archivePath}/${file.name}`;
+			// Generate filename: "Now YYYY-MM-DD.md" or fallback to original name
+			const archivedFileName = startedDate
+				? formatNowFileName(startedDate)
+				: file.name;
+
+			// Move and rename file to archive
+			const newPath = `${archivePath}/${archivedFileName}`;
 			await this.app.fileManager.renameFile(file, newPath);
 		} catch (error) {
 			console.error(`Roll: Error archiving ${file.name}`, error);
-			// Don't throw - just log and continue
 		}
 	}
 
@@ -215,37 +208,5 @@ export default class RollPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-}
-
-class RollSettingTab extends PluginSettingTab {
-	plugin: RollPlugin;
-
-	constructor(app: App, plugin: RollPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const { containerEl } = this;
-
-		containerEl.empty();
-
-		containerEl.createEl("h2", { text: "Roll" });
-
-		new Setting(containerEl)
-			.setName("Today folder")
-			.setDesc(
-				"Folder where Today pages will be created (leave empty for vault root)",
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder("Example: Roll")
-					.setValue(this.plugin.settings.todayFolder)
-					.onChange(async (value) => {
-						this.plugin.settings.todayFolder = value;
-						await this.plugin.saveSettings();
-					}),
-			);
 	}
 }

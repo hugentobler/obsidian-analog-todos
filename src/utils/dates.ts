@@ -4,7 +4,7 @@
  */
 
 /**
- * Get today's date in YYYY-MM-DD format
+ * Get the current date in YYYY-MM-DD format
  * Uses Obsidian's bundled moment.js instance
  */
 export function getTodayDate(): string {

@@ -8,17 +8,27 @@
  */
 
 import { type App, MarkdownView } from "obsidian";
+import type RollPlugin from "../main";
+import { isInPluginFolder } from "./utils/files";
 import {
 	getNextTaskState,
 	parseTaskLine,
 	type TaskState,
-} from "../utils/tasks";
+} from "./utils/tasks";
 
 /**
- * Creates a click handler for tri-state checkbox toggling.
+ * Register checkbox handler for tri-state toggling: [ ] → [/] → [x] → [ ]
+ */
+export function registerCheckboxes(plugin: RollPlugin): void {
+	const handler = createCheckboxHandler(plugin.app, () => plugin.settings.rollFolder);
+	plugin.registerDomEvent(document, "click", handler, true);
+}
+
+/**
+ * Creates a click handler for tri-state checkbox toggling: [ ] → [/] → [x] → [ ]
  * Register with capture phase to intercept before Obsidian's handler.
  */
-export function createTriStateHandler(app: App, getFolderPath: () => string) {
+function createCheckboxHandler(app: App, getFolderPath: () => string) {
 	return (evt: MouseEvent): void => {
 		const target = evt.target as HTMLElement;
 
@@ -29,7 +39,7 @@ export function createTriStateHandler(app: App, getFolderPath: () => string) {
 		if (!activeView?.editor) return;
 
 		const file = activeView.file;
-		if (!file || !isInFolder(file.path, getFolderPath())) return;
+		if (!file || !isInPluginFolder(file.path, getFolderPath())) return;
 
 		const lineNumber = getLineNumberFromCheckbox(target, activeView);
 		if (lineNumber === null) return;
@@ -89,10 +99,4 @@ function syncCheckboxState(target: HTMLElement, newState: TaskState): void {
 	});
 }
 
-function isInFolder(filePath: string, folderPath: string): boolean {
-	// If no folder configured (vault root), check file is at root level
-	if (!folderPath) {
-		return !filePath.includes("/");
-	}
-	return filePath.startsWith(`${folderPath}/`);
-}
+
