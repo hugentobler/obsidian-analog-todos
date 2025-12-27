@@ -11,7 +11,7 @@ import {
 } from "./src/settings";
 import { getTodayDate } from "./src/utils/dates";
 import { formatNowFileName } from "./src/utils/filenames";
-import { filterIncomplete, parseTasks } from "./src/utils/tasks";
+import { filterIncompleteSections, parseSections, type Section } from "./src/utils/tasks";
 
 export default class RollPlugin extends Plugin {
 	settings: RollSettings;
@@ -98,25 +98,25 @@ export default class RollPlugin extends Plugin {
 
 			const today = getTodayDate();
 
-			// Extract incomplete tasks from current Now
+			// Extract incomplete sections from current Now
 			const content = await this.app.vault.read(now.file);
-			const allTasks = parseTasks(content);
-			const rolledTasks = filterIncomplete(allTasks);
+			const allSections = parseSections(content);
+			const rolledSections = filterIncompleteSections(allSections);
 
 			// Mark as ended and archive
 			await this.markAsEnded(now.file, today);
 			await this.archiveFile(now.file, now.started);
 
-			// Create new Now.md with rolled over tasks
-			await this.createNowFile(rolledTasks);
+			// Create new Now.md with rolled over sections
+			await this.createNowFile(rolledSections);
 
-			const taskCount = rolledTasks.length;
+			const taskCount = rolledSections.reduce((sum, s) => sum + s.tasks.length, 0);
 			if (taskCount > 0) {
 				new Notice(
-					`Created new Now Page • ${taskCount} task${taskCount > 1 ? "s" : ""} rolled forward`,
+					`Rolled over • ${taskCount} task${taskCount > 1 ? "s" : ""} rolled forward`,
 				);
 			} else {
-				new Notice("Created new Now Page • No tasks rolled forward");
+				new Notice("Rolled over • No tasks rolled forward");
 			}
 		} catch (error) {
 			console.error("Roll: Error rolling over Now page", error);
@@ -125,9 +125,9 @@ export default class RollPlugin extends Plugin {
 	}
 
 	/**
-	 * Create a new Now.md file with optional rolled over tasks
+	 * Create a new Now.md file with optional rolled over sections
 	 */
-	async createNowFile(rolledTasks: ReturnType<typeof filterIncomplete> = []) {
+	async createNowFile(rolledSections: Section[] = []) {
 		const folderPath = this.settings.rollFolder;
 		const filePath = this.getNowFilePath();
 		const today = getTodayDate();
@@ -141,7 +141,7 @@ export default class RollPlugin extends Plugin {
 		}
 
 		// Create new Now page
-		const template = buildNowTemplate(today, rolledTasks);
+		const template = buildNowTemplate(today, rolledSections);
 		const file = await this.app.vault.create(filePath, template);
 		const leaf = this.app.workspace.getLeaf(false);
 		await leaf.openFile(file);
@@ -153,7 +153,7 @@ export default class RollPlugin extends Plugin {
 			view.editor.setCursor({ line: lineCount - 1, ch: 0 });
 		}
 
-		if (rolledTasks.length === 0) {
+		if (rolledSections.length === 0) {
 			new Notice("Created new Now page");
 		}
 	}

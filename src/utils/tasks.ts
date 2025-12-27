@@ -11,7 +11,11 @@ export interface Task {
 	text: string;
 	indent: string;
 	raw: string;
-	header: string | null; // Header directly preceding this task group
+}
+
+export interface Section {
+	headers: string[];
+	tasks: Task[];
 }
 
 /** Header pattern - any markdown header level */
@@ -21,51 +25,83 @@ const HEADER_PATTERN = /^#{1,6}\s+.+$/;
 const TASK_PATTERN = /^(\s*)- \[([^\]])\]\s*(.*)$/;
 
 /**
- * Parse tasks from markdown content
- * Tracks headers directly preceding task groups
+ * Parse content into sections
+ * A section = consecutive headers + following tasks (text ignored)
+ * A new header starts a new section
  */
-export function parseTasks(content: string): Task[] {
-	const tasks: Task[] = [];
+export function parseSections(content: string): Section[] {
+	const sections: Section[] = [];
 	const lines = content.split("\n");
 
-	let currentHeader: string | null = null;
-	let headerValid = false; // True if only blank lines/tasks since header
+	let currentSection: Section | null = null;
 
 	for (let i = 0; i < lines.length; i++) {
 		const line = lines[i];
-		const trimmed = line.trim();
 
-		// Check for header
+		// Check for header - starts new section
 		if (HEADER_PATTERN.test(line)) {
-			currentHeader = line;
-			headerValid = true;
+			// If we have a current section with tasks, save it
+			if (currentSection && currentSection.tasks.length > 0) {
+				sections.push(currentSection);
+			}
+			// Start new section or add to header group
+			if (currentSection && currentSection.tasks.length === 0) {
+				// No tasks yet, this is a consecutive header
+				currentSection.headers.push(line);
+			} else {
+				// Start fresh section
+				currentSection = { headers: [line], tasks: [] };
+			}
 			continue;
 		}
 
 		// Check for task
 		const taskMatch = line.match(TASK_PATTERN);
 		if (taskMatch) {
-			tasks.push({
+			// Create section for orphan tasks (no header)
+			if (!currentSection) {
+				currentSection = { headers: [], tasks: [] };
+			}
+			currentSection.tasks.push({
 				line: i,
 				indent: taskMatch[1],
 				state: taskMatch[2] as TaskState,
 				text: taskMatch[3],
 				raw: line,
-				header: headerValid ? currentHeader : null,
 			});
 			continue;
 		}
 
-		// Blank line - doesn't break header association
-		if (trimmed === "") {
-			continue;
-		}
-
-		// Any other content breaks header association
-		headerValid = false;
+		// Other content (blank lines, text) - ignored but doesn't break section
 	}
 
-	return tasks;
+	// Don't forget the last section
+	if (currentSection && currentSection.tasks.length > 0) {
+		sections.push(currentSection);
+	}
+
+	return sections;
+}
+
+/**
+ * Parse tasks from markdown content (flat list, for backwards compatibility)
+ */
+export function parseTasks(content: string): Task[] {
+	const sections = parseSections(content);
+	return sections.flatMap((s) => s.tasks);
+}
+
+/**
+ * Filter sections that have at least one incomplete task
+ * Returns sections with only incomplete tasks
+ */
+export function filterIncompleteSections(sections: Section[]): Section[] {
+	return sections
+		.map((section) => ({
+			headers: section.headers,
+			tasks: section.tasks.filter((t) => t.state === " " || t.state === "/"),
+		}))
+		.filter((section) => section.tasks.length > 0);
 }
 
 /**
@@ -94,6 +130,20 @@ export function getNextTaskState(currentState: TaskState): TaskState {
  */
 export function taskToMarkdown(task: Task): string {
 	return `${task.indent}- [${task.state}] ${task.text}`;
+}
+
+/**
+ * Convert section to markdown lines
+ */
+export function sectionToMarkdown(section: Section): string[] {
+	const lines: string[] = [];
+	for (const header of section.headers) {
+		lines.push(header);
+	}
+	for (const task of section.tasks) {
+		lines.push(taskToMarkdown(task));
+	}
+	return lines;
 }
 
 /** Result of parsing a single task line */
@@ -125,67 +175,110 @@ export function parseTaskLine(line: string): ParsedTaskLine | null {
 if (import.meta.vitest) {
 	const { describe, it, expect } = import.meta.vitest;
 
-	describe("parseTasks", () => {
-		it("parses basic tasks", () => {
-			const content = "- [ ] todo\n- [x] done\n- [/] in progress";
-			const tasks = parseTasks(content);
+	describe("parseSections", () => {
+		it("parses tasks without headers as one section", () => {
+			const content = "- [ ] task 1\n- [x] task 2";
+			const sections = parseSections(content);
 
-			expect(tasks).toHaveLength(3);
-			expect(tasks[0]).toMatchObject({ state: " ", text: "todo", header: null });
-			expect(tasks[1]).toMatchObject({ state: "x", text: "done", header: null });
-			expect(tasks[2]).toMatchObject({ state: "/", text: "in progress", header: null });
+			expect(sections).toHaveLength(1);
+			expect(sections[0].headers).toEqual([]);
+			expect(sections[0].tasks).toHaveLength(2);
 		});
 
-		it("parses indented tasks and preserves line numbers", () => {
-			const content = "# Header\n- [ ] task\n  - [x] nested";
-			const tasks = parseTasks(content);
+		it("parses header with tasks as section", () => {
+			const content = "### Project\n- [ ] task 1\n- [ ] task 2";
+			const sections = parseSections(content);
 
-			expect(tasks).toHaveLength(2);
-			expect(tasks[0]).toMatchObject({ line: 1, indent: "", header: "# Header" });
-			expect(tasks[1]).toMatchObject({ line: 2, indent: "  ", header: "# Header" });
+			expect(sections).toHaveLength(1);
+			expect(sections[0].headers).toEqual(["### Project"]);
+			expect(sections[0].tasks).toHaveLength(2);
 		});
 
-		it("tracks headers directly preceding tasks", () => {
-			const content = "### Project A\n- [ ] task 1\n- [ ] task 2";
-			const tasks = parseTasks(content);
+		it("groups consecutive headers together", () => {
+			const content = "## Big Project\n### Subproject\n- [ ] task 1";
+			const sections = parseSections(content);
 
-			expect(tasks).toHaveLength(2);
-			expect(tasks[0].header).toBe("### Project A");
-			expect(tasks[1].header).toBe("### Project A");
+			expect(sections).toHaveLength(1);
+			expect(sections[0].headers).toEqual(["## Big Project", "### Subproject"]);
+			expect(sections[0].tasks).toHaveLength(1);
 		});
 
-		it("breaks header association when other content intervenes", () => {
-			const content = "### Project A\nSome notes\n- [ ] task 1";
-			const tasks = parseTasks(content);
+		it("ignores text between headers and tasks", () => {
+			const content = "### Project\nSome notes here\n- [ ] task 1";
+			const sections = parseSections(content);
 
-			expect(tasks).toHaveLength(1);
-			expect(tasks[0].header).toBeNull();
+			expect(sections).toHaveLength(1);
+			expect(sections[0].headers).toEqual(["### Project"]);
+			expect(sections[0].tasks).toHaveLength(1);
 		});
 
-		it("allows blank lines between header and tasks", () => {
-			const content = "### Project A\n\n\n- [ ] task 1";
-			const tasks = parseTasks(content);
-
-			expect(tasks).toHaveLength(1);
-			expect(tasks[0].header).toBe("### Project A");
-		});
-
-		it("handles multiple headers", () => {
+		it("starts new section on new header", () => {
 			const content = "### A\n- [ ] task a\n### B\n- [ ] task b";
-			const tasks = parseTasks(content);
+			const sections = parseSections(content);
 
-			expect(tasks).toHaveLength(2);
-			expect(tasks[0].header).toBe("### A");
-			expect(tasks[1].header).toBe("### B");
+			expect(sections).toHaveLength(2);
+			expect(sections[0].headers).toEqual(["### A"]);
+			expect(sections[0].tasks).toHaveLength(1);
+			expect(sections[1].headers).toEqual(["### B"]);
+			expect(sections[1].tasks).toHaveLength(1);
+		});
+
+		it("handles orphan tasks before first header", () => {
+			const content = "- [ ] orphan\n### Project\n- [ ] task";
+			const sections = parseSections(content);
+
+			expect(sections).toHaveLength(2);
+			expect(sections[0].headers).toEqual([]);
+			expect(sections[0].tasks[0].text).toBe("orphan");
+			expect(sections[1].headers).toEqual(["### Project"]);
+		});
+
+		it("drops headers with no tasks", () => {
+			const content = "### Empty\n\n### Has Tasks\n- [ ] task";
+			const sections = parseSections(content);
+
+			expect(sections).toHaveLength(1);
+			expect(sections[0].headers).toEqual(["### Empty", "### Has Tasks"]);
+		});
+	});
+
+	describe("filterIncompleteSections", () => {
+		it("keeps sections with incomplete tasks", () => {
+			const sections: Section[] = [
+				{ headers: ["### A"], tasks: [{ line: 0, state: " ", text: "todo", indent: "", raw: "" }] },
+				{ headers: ["### B"], tasks: [{ line: 1, state: "x", text: "done", indent: "", raw: "" }] },
+			];
+
+			const result = filterIncompleteSections(sections);
+			expect(result).toHaveLength(1);
+			expect(result[0].headers).toEqual(["### A"]);
+		});
+
+		it("filters out completed tasks within sections", () => {
+			const sections: Section[] = [
+				{
+					headers: ["### Mixed"],
+					tasks: [
+						{ line: 0, state: " ", text: "todo", indent: "", raw: "" },
+						{ line: 1, state: "x", text: "done", indent: "", raw: "" },
+						{ line: 2, state: "/", text: "wip", indent: "", raw: "" },
+					],
+				},
+			];
+
+			const result = filterIncompleteSections(sections);
+			expect(result).toHaveLength(1);
+			expect(result[0].tasks).toHaveLength(2);
+			expect(result[0].tasks.map((t) => t.state)).toEqual([" ", "/"]);
 		});
 	});
 
 	describe("filterIncomplete", () => {
 		it("filters only incomplete tasks", () => {
 			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "todo", indent: "", raw: "", header: null },
-				{ line: 1, state: "x", text: "done", indent: "", raw: "", header: null },
-				{ line: 2, state: "/", text: "wip", indent: "", raw: "", header: null },
+				{ line: 0, state: " ", text: "todo", indent: "", raw: "" },
+				{ line: 1, state: "x", text: "done", indent: "", raw: "" },
+				{ line: 2, state: "/", text: "wip", indent: "", raw: "" },
 			];
 
 			const incomplete = filterIncomplete(tasks);
@@ -210,9 +303,38 @@ if (import.meta.vitest) {
 				text: "in progress",
 				indent: "  ",
 				raw: "",
-				header: null,
 			};
 			expect(taskToMarkdown(task)).toBe("  - [/] in progress");
+		});
+	});
+
+	describe("sectionToMarkdown", () => {
+		it("converts section with headers and tasks", () => {
+			const section: Section = {
+				headers: ["## Project", "### Sub"],
+				tasks: [
+					{ line: 0, state: " ", text: "task 1", indent: "", raw: "" },
+					{ line: 1, state: "/", text: "task 2", indent: "  ", raw: "" },
+				],
+			};
+
+			const lines = sectionToMarkdown(section);
+			expect(lines).toEqual([
+				"## Project",
+				"### Sub",
+				"- [ ] task 1",
+				"  - [/] task 2",
+			]);
+		});
+
+		it("converts section without headers", () => {
+			const section: Section = {
+				headers: [],
+				tasks: [{ line: 0, state: " ", text: "orphan", indent: "", raw: "" }],
+			};
+
+			const lines = sectionToMarkdown(section);
+			expect(lines).toEqual(["- [ ] orphan"]);
 		});
 	});
 

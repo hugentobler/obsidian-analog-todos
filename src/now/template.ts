@@ -3,7 +3,7 @@
  * Pure functions - no Obsidian dependencies
  */
 
-import { type Task, taskToMarkdown } from "../utils/tasks";
+import { type Section, sectionToMarkdown } from "../utils/tasks";
 
 const DEFAULT_TEMPLATE_BODY = `
 - [ ] new task
@@ -17,32 +17,24 @@ const DEFAULT_TEMPLATE_BODY = `
 /**
  * Build a Now page template
  * @param startDate - ISO date string (YYYY-MM-DD)
- * @param rolledTasks - Tasks rolled over from previous Now page
+ * @param rolledSections - Sections rolled over from previous Now page
  */
 export function buildNowTemplate(
 	startDate: string,
-	rolledTasks: Task[] = [],
+	rolledSections: Section[] = [],
 ): string {
 	const frontmatter = `---\nstarted: ${startDate}\n---\n`;
 
-	if (rolledTasks.length === 0) {
+	if (rolledSections.length === 0) {
 		return frontmatter + DEFAULT_TEMPLATE_BODY;
 	}
 
-	// Group tasks by header, preserving order
 	const lines: string[] = [];
-	let lastHeader: string | null | undefined; // Track header changes
-
-	for (const task of rolledTasks) {
-		// Output header when it changes (including from null to header or header to null)
-		if (task.header !== lastHeader) {
-			if (task.header) {
-				if (lines.length > 0) lines.push(""); // Blank line before new section
-				lines.push(task.header);
-			}
-			lastHeader = task.header;
+	for (const section of rolledSections) {
+		if (lines.length > 0) {
+			lines.push(""); // Blank line between sections
 		}
-		lines.push(taskToMarkdown(task));
+		lines.push(...sectionToMarkdown(section));
 	}
 
 	return `${frontmatter}\n${lines.join("\n")}\n`;
@@ -53,7 +45,7 @@ if (import.meta.vitest) {
 	const { describe, it, expect } = import.meta.vitest;
 
 	describe("buildNowTemplate", () => {
-		it("uses default template when no rolled tasks", () => {
+		it("uses default template when no rolled sections", () => {
 			const result = buildNowTemplate("2024-12-18");
 			expect(result).toContain("started: 2024-12-18");
 			expect(result).toContain("- [ ] new task");
@@ -63,118 +55,82 @@ if (import.meta.vitest) {
 			expect(result).toContain("- [x] completed task");
 		});
 
-		it("includes rolled tasks", () => {
-			const tasks: Task[] = [
+		it("includes rolled sections with headers", () => {
+			const sections: Section[] = [
 				{
-					line: 0,
-					state: " ",
-					text: "todo task",
-					indent: "",
-					raw: "",
-					header: null,
-				},
-				{
-					line: 1,
-					state: "/",
-					text: "in progress",
-					indent: "",
-					raw: "",
-					header: null,
+					headers: ["### Project A"],
+					tasks: [
+						{ line: 0, state: " ", text: "task 1", indent: "", raw: "" },
+						{ line: 1, state: "/", text: "task 2", indent: "", raw: "" },
+					],
 				},
 			];
-			const result = buildNowTemplate("2024-12-18", tasks);
+			const result = buildNowTemplate("2024-12-18", sections);
 
 			expect(result).toContain("started: 2024-12-18");
-			expect(result).toContain("- [ ] todo task");
-			expect(result).toContain("- [/] in progress");
+			expect(result).toContain("### Project A");
+			expect(result).toContain("- [ ] task 1");
+			expect(result).toContain("- [/] task 2");
 			expect(result).not.toContain("new task");
 		});
 
-		it("preserves task indentation", () => {
-			const tasks: Task[] = [
+		it("includes nested headers", () => {
+			const sections: Section[] = [
 				{
-					line: 0,
-					state: " ",
-					text: "parent",
-					indent: "",
-					raw: "",
-					header: null,
-				},
-				{
-					line: 1,
-					state: "/",
-					text: "child",
-					indent: "  ",
-					raw: "",
-					header: null,
+					headers: ["## Big Project", "### Subproject"],
+					tasks: [{ line: 0, state: " ", text: "task", indent: "", raw: "" }],
 				},
 			];
-			const result = buildNowTemplate("2024-12-18", tasks);
+			const result = buildNowTemplate("2024-12-18", sections);
+
+			expect(result).toContain("## Big Project");
+			expect(result).toContain("### Subproject");
+			expect(result).toContain("- [ ] task");
+		});
+
+		it("handles orphan tasks without headers", () => {
+			const sections: Section[] = [
+				{
+					headers: [],
+					tasks: [{ line: 0, state: " ", text: "orphan", indent: "", raw: "" }],
+				},
+			];
+			const result = buildNowTemplate("2024-12-18", sections);
+
+			expect(result).toContain("- [ ] orphan");
+			expect(result).not.toContain("#");
+		});
+
+		it("preserves task indentation", () => {
+			const sections: Section[] = [
+				{
+					headers: ["### Project"],
+					tasks: [
+						{ line: 0, state: " ", text: "parent", indent: "", raw: "" },
+						{ line: 1, state: "/", text: "child", indent: "  ", raw: "" },
+					],
+				},
+			];
+			const result = buildNowTemplate("2024-12-18", sections);
 
 			expect(result).toContain("- [ ] parent");
 			expect(result).toContain("  - [/] child");
 		});
 
-		it("includes headers directly preceding tasks", () => {
-			const tasks: Task[] = [
+		it("adds blank lines between sections", () => {
+			const sections: Section[] = [
 				{
-					line: 1,
-					state: " ",
-					text: "task 1",
-					indent: "",
-					raw: "",
-					header: "### Project A",
+					headers: ["### A"],
+					tasks: [{ line: 0, state: " ", text: "task a", indent: "", raw: "" }],
 				},
 				{
-					line: 2,
-					state: "/",
-					text: "task 2",
-					indent: "",
-					raw: "",
-					header: "### Project A",
-				},
-				{
-					line: 5,
-					state: " ",
-					text: "task 3",
-					indent: "",
-					raw: "",
-					header: "### Project B",
+					headers: ["### B"],
+					tasks: [{ line: 1, state: " ", text: "task b", indent: "", raw: "" }],
 				},
 			];
-			const result = buildNowTemplate("2024-12-18", tasks);
+			const result = buildNowTemplate("2024-12-18", sections);
 
-			expect(result).toContain("### Project A");
-			expect(result).toContain("### Project B");
-			expect(result).toContain("- [ ] task 1");
-			expect(result).toContain("- [/] task 2");
-			expect(result).toContain("- [ ] task 3");
-		});
-
-		it("handles mix of tasks with and without headers", () => {
-			const tasks: Task[] = [
-				{
-					line: 0,
-					state: " ",
-					text: "orphan task",
-					indent: "",
-					raw: "",
-					header: null,
-				},
-				{
-					line: 3,
-					state: " ",
-					text: "project task",
-					indent: "",
-					raw: "",
-					header: "### My Project",
-				},
-			];
-			const result = buildNowTemplate("2024-12-18", tasks);
-
-			expect(result).toContain("- [ ] orphan task");
-			expect(result).toContain("### My Project");
-			expect(result).toContain("- [ ] project task");
+			expect(result).toContain("- [ ] task a\n\n### B");
 		});
 	});
 }
