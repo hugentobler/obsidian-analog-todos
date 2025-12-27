@@ -10,8 +10,8 @@ import {
 	registerSettings,
 } from "./src/settings";
 import { getTodayDate } from "./src/utils/dates";
-import { formatNowFileName } from "./src/utils/filenames";
-import { filterIncompleteSections, parseSections, type Section } from "./src/utils/tasks";
+import { formatArchivedNowFileName } from "./src/utils/filenames";
+import { filterIncompleteSections, parseSections } from "./src/utils/tasks";
 
 export default class RollPlugin extends Plugin {
 	settings: RollSettings;
@@ -97,18 +97,29 @@ export default class RollPlugin extends Plugin {
 			}
 
 			const today = getTodayDate();
+			const folderPath = this.settings.rollFolder;
 
 			// Extract incomplete sections from current Now
 			const content = await this.app.vault.read(now.file);
 			const allSections = parseSections(content);
 			const rolledSections = filterIncompleteSections(allSections);
 
-			// Mark as ended and archive
-			await this.markAsEnded(now.file, today);
-			await this.archiveFile(now.file, now.started);
+			// 1. Create new file with temp name first (safe - doesn't touch old file)
+			const tempPath = folderPath ? `${folderPath}/Now.tmp.md` : "Now.tmp.md";
+			const template = buildNowTemplate(today, rolledSections);
+			const tempFile = await this.app.vault.create(tempPath, template);
 
-			// Create new Now.md with rolled over sections
-			await this.createNowFile(rolledSections);
+			// 2. Mark old file as ended and archive it
+			await this.markAsEnded(now.file, today);
+			await this.archiveFile(now.file, now.started ?? today, today);
+
+			// 3. Rename temp file to Now.md
+			const nowPath = this.getNowFilePath();
+			await this.app.fileManager.renameFile(tempFile, nowPath);
+
+			// Open the new Now page
+			const newFile = this.app.vault.getAbstractFileByPath(nowPath) as TFile;
+			await this.openFileAndPositionCursor(newFile, template);
 
 			const taskCount = rolledSections.reduce((sum, s) => sum + s.tasks.length, 0);
 			if (taskCount > 0) {
@@ -125,9 +136,9 @@ export default class RollPlugin extends Plugin {
 	}
 
 	/**
-	 * Create a new Now.md file with optional rolled over sections
+	 * Create a new Now.md file (for initial creation only)
 	 */
-	async createNowFile(rolledSections: Section[] = []) {
+	async createNowFile() {
 		const folderPath = this.settings.rollFolder;
 		const filePath = this.getNowFilePath();
 		const today = getTodayDate();
@@ -141,20 +152,23 @@ export default class RollPlugin extends Plugin {
 		}
 
 		// Create new Now page
-		const template = buildNowTemplate(today, rolledSections);
+		const template = buildNowTemplate(today);
 		const file = await this.app.vault.create(filePath, template);
+		await this.openFileAndPositionCursor(file, template);
+		new Notice("Created new Now page");
+	}
+
+	/**
+	 * Open a file and position cursor at end
+	 */
+	async openFileAndPositionCursor(file: TFile, content: string) {
 		const leaf = this.app.workspace.getLeaf(false);
 		await leaf.openFile(file);
 
-		// Position cursor at end of template
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (view?.editor) {
-			const lineCount = template.split("\n").length;
+			const lineCount = content.split("\n").length;
 			view.editor.setCursor({ line: lineCount - 1, ch: 0 });
-		}
-
-		if (rolledSections.length === 0) {
-			new Notice("Created new Now page");
 		}
 	}
 
@@ -174,34 +188,33 @@ export default class RollPlugin extends Plugin {
 	}
 
 	/**
-	 * Archive file: rename with started date and move to Archive folder
+	 * Archive file: rename with date range and move to Archive folder
 	 */
-	async archiveFile(file: TFile, startedDate?: string) {
-		try {
-			const rollFolder = this.settings.rollFolder;
-			const archiveFolder = this.settings.archiveFolder;
-			const archivePath = rollFolder
-				? `${rollFolder}/${archiveFolder}`
-				: archiveFolder;
+	async archiveFile(file: TFile, startedDate: string, endedDate: string) {
+		const rollFolder = this.settings.rollFolder;
+		const archiveFolder = this.settings.archiveFolder;
+		const archivePath = rollFolder
+			? `${rollFolder}/${archiveFolder}`
+			: archiveFolder;
 
-			// Create archive folder if it doesn't exist
-			const existingArchiveFolder =
-				this.app.vault.getAbstractFileByPath(archivePath);
-			if (!existingArchiveFolder) {
-				await this.app.vault.createFolder(archivePath);
-			}
-
-			// Generate filename: "Now YYYY-MM-DD.md" or fallback to original name
-			const archivedFileName = startedDate
-				? formatNowFileName(startedDate)
-				: file.name;
-
-			// Move and rename file to archive
-			const newPath = `${archivePath}/${archivedFileName}`;
-			await this.app.fileManager.renameFile(file, newPath);
-		} catch (error) {
-			console.error(`Roll: Error archiving ${file.name}`, error);
+		// Create archive folder if it doesn't exist
+		const existingArchiveFolder =
+			this.app.vault.getAbstractFileByPath(archivePath);
+		if (!existingArchiveFolder) {
+			await this.app.vault.createFolder(archivePath);
 		}
+
+		// Find unique filename (handle same-day rollovers)
+		let counter = 1;
+		let archivedFileName = formatArchivedNowFileName(startedDate, endedDate);
+		while (this.app.vault.getAbstractFileByPath(`${archivePath}/${archivedFileName}`)) {
+			counter++;
+			archivedFileName = formatArchivedNowFileName(startedDate, endedDate, counter);
+		}
+
+		// Move and rename file to archive
+		const newPath = `${archivePath}/${archivedFileName}`;
+		await this.app.fileManager.renameFile(file, newPath);
 	}
 
 	async loadSettings() {
