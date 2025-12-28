@@ -8,7 +8,7 @@ export default defineConfig({
 		exclude: [
 			"**/node_modules/**",
 			"src/ui/**", // UI components depend on Obsidian
-			"src/pages/**", // Page logic depends on Obsidian
+			"src/pages/page-manager.ts", // Page manager depends on Obsidian
 		],
 		// Coverage configuration
 		coverage: {

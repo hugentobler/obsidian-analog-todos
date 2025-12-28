@@ -1,19 +1,21 @@
 import type RollPlugin from "../main";
+import { PAGE_CONFIG } from "./pages/types";
 
 /**
  * Register file and editor context menus
  */
 export function registerMenus(plugin: RollPlugin): void {
-	const nowPath = () => plugin.getNowFilePath();
-
 	// File menu (right-click in file explorer)
 	plugin.registerEvent(
 		plugin.app.workspace.on("file-menu", (menu, file) => {
-			if (file.path !== nowPath()) return;
+			const pageType = plugin.detectPageType(file.path);
+			if (!pageType) return;
+
+			const displayName = PAGE_CONFIG[pageType].displayName;
 
 			menu.addItem((item) => {
-				item.setTitle("Roll: Rollover Page").onClick(async () => {
-					await plugin.rolloverNow();
+				item.setTitle(`Roll: Rollover ${displayName}`).onClick(async () => {
+					await plugin.rolloverPage(pageType);
 				});
 			});
 		}),
@@ -22,11 +24,16 @@ export function registerMenus(plugin: RollPlugin): void {
 	// Editor menu (right-click in editor)
 	plugin.registerEvent(
 		plugin.app.workspace.on("editor-menu", (menu, _editor, view) => {
-			if (view.file?.path !== nowPath()) return;
+			if (!view.file) return;
+
+			const pageType = plugin.detectPageType(view.file.path);
+			if (!pageType) return;
+
+			const displayName = PAGE_CONFIG[pageType].displayName;
 
 			menu.addItem((item) => {
-				item.setTitle("Roll: Rollover Page").onClick(async () => {
-					await plugin.rolloverNow();
+				item.setTitle(`Roll: Rollover ${displayName}`).onClick(async () => {
+					await plugin.rolloverPage(pageType);
 				});
 			});
 		}),
