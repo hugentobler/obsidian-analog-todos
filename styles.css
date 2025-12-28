@@ -39,11 +39,16 @@ input[type="checkbox"][data-task="/"]:checked::after {
 /* Roll Next Code Block */
 .roll-next-container {
 	cursor: pointer;
-	opacity: 0.5;
+	opacity: 0.66;
 }
 
 .roll-next-container:hover {
 	opacity: 1;
 	background-color: var(--background-secondary);
 	border-radius: 4px;
+}
+
+.roll-next-task-text p {
+	display: inline;
+	margin: 0;
 }
