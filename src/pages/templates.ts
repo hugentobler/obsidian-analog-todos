@@ -17,6 +17,9 @@ const DEFAULT_NOW_TEMPLATE_BODY = `
 ### Project title
 - [ ] project task
 - [x] completed task
+
+\`\`\`roll-next
+\`\`\`
 `;
 
 const DEFAULT_NEXT_TEMPLATE_BODY = `
@@ -59,6 +62,11 @@ export function buildPageTemplate(
 		}
 		lines.push(...sectionToMarkdown(section));
 	}
+
+	// Append roll-next code block for Now pages
+	lines.push("");
+	lines.push("```roll-next");
+	lines.push("```");
 
 	return `${frontmatter}\n${lines.join("\n")}\n`;
 }
