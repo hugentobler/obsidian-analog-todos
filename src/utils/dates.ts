@@ -13,7 +13,7 @@ export function getTodayDate(): string {
 
 /**
  * Validate if a string matches YYYY-MM-DD format
- * 
+ *
  * Pattern: /^\d{4}-\d{2}-\d{2}$/
  * Valid: "2024-12-16", "2024-01-01"
  * Invalid: "2024-1-1", "12/16/2024", ""
@@ -25,7 +25,7 @@ export function isValidDateFormat(date: string): boolean {
 /**
  * Compare two date strings (YYYY-MM-DD format)
  * Uses lexicographic comparison (works because of YYYY-MM-DD format)
- * 
+ *
  * @returns -1 if date1 < date2, 0 if equal, 1 if date1 > date2
  */
 export function compareDates(date1: string, date2: string): number {

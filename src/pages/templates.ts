@@ -112,9 +112,8 @@ if (import.meta.vitest) {
 			it("uses default next template when no rolled sections", () => {
 				const result = buildPageTemplate("next", "2024-12-18");
 				expect(result).toContain("started: 2024-12-18");
-				expect(result).toContain("- [ ] future task");
-				expect(result).toContain("### Upcoming project");
-				expect(result).toContain("- [ ] planned task");
+				expect(result).toContain("- [ ] task coming up soon");
+				expect(result).toContain("- [ ] another task coming up later");
 			});
 
 			it("flattens tasks without headers on rollover", () => {

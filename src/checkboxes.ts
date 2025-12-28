@@ -10,17 +10,16 @@
 import { type App, MarkdownView } from "obsidian";
 import type RollPlugin from "../main";
 import { isInPluginFolder } from "./utils/files";
-import {
-	getNextTaskState,
-	parseTaskLine,
-	type TaskState,
-} from "./utils/tasks";
+import { getNextTaskState, parseTaskLine, type TaskState } from "./utils/tasks";
 
 /**
  * Register checkbox handler for tri-state toggling: [ ] → [/] → [x] → [ ]
  */
 export function registerCheckboxes(plugin: RollPlugin): void {
-	const handler = createCheckboxHandler(plugin.app, () => plugin.settings.rollFolder);
+	const handler = createCheckboxHandler(
+		plugin.app,
+		() => plugin.settings.rollFolder,
+	);
 	plugin.registerDomEvent(document, "click", handler, true);
 }
 
@@ -98,5 +97,3 @@ function syncCheckboxState(target: HTMLElement, newState: TaskState): void {
 		});
 	});
 }
-
-

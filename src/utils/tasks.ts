@@ -69,7 +69,6 @@ export function parseSections(content: string): Section[] {
 				text: taskMatch[3],
 				raw: line,
 			});
-			continue;
 		}
 
 		// Other content (blank lines, text) - ignored but doesn't break section
@@ -245,8 +244,14 @@ if (import.meta.vitest) {
 	describe("filterIncompleteSections", () => {
 		it("keeps sections with incomplete tasks", () => {
 			const sections: Section[] = [
-				{ headers: ["### A"], tasks: [{ line: 0, state: " ", text: "todo", indent: "", raw: "" }] },
-				{ headers: ["### B"], tasks: [{ line: 1, state: "x", text: "done", indent: "", raw: "" }] },
+				{
+					headers: ["### A"],
+					tasks: [{ line: 0, state: " ", text: "todo", indent: "", raw: "" }],
+				},
+				{
+					headers: ["### B"],
+					tasks: [{ line: 1, state: "x", text: "done", indent: "", raw: "" }],
+				},
 			];
 
 			const result = filterIncompleteSections(sections);

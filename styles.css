@@ -4,34 +4,46 @@
 /* [ ] and [x] use Obsidian's default styling */
 
 /* [/] Incomplete/In Progress – diagonal split (accent color / transparent) */
-input[type=checkbox][data-task="/"] {
-  background: linear-gradient(
-    135deg,
-    var(--interactive-accent) 0%,
-    var(--interactive-accent) 49.9%,
-    transparent 50%,
-    transparent 100%
-  ) !important;
-  background-color: transparent !important;
-  border: 1px solid var(--interactive-accent);
+input[type="checkbox"][data-task="/"] {
+	background: linear-gradient(
+		135deg,
+		var(--interactive-accent) 0%,
+		var(--interactive-accent) 49.9%,
+		transparent 50%,
+		transparent 100%
+	) !important;
+	background-color: transparent !important;
+	border: 1px solid var(--interactive-accent);
 }
 
 /* Hover state for [/] checkbox - keep gradient but change color */
 @media (hover: hover) {
-  input[type=checkbox][data-task="/"]:hover {
-    background: linear-gradient(
-      135deg,
-      var(--checkbox-color-hover) 0%,
-      var(--checkbox-color-hover) 49.9%,
-      transparent 50%,
-      transparent 100%
-    ) !important;
-    background-color: transparent !important;
-    border-color: var(--checkbox-color-hover);
-  }
+	input[type="checkbox"][data-task="/"]:hover {
+		background: linear-gradient(
+			135deg,
+			var(--checkbox-color-hover) 0%,
+			var(--checkbox-color-hover) 49.9%,
+			transparent 50%,
+			transparent 100%
+		) !important;
+		background-color: transparent !important;
+		border-color: var(--checkbox-color-hover);
+	}
 }
 
 /* Hide the default checkmark when [/] is checked */
-input[type=checkbox][data-task="/"]:checked::after {
-  display: none;
+input[type="checkbox"][data-task="/"]:checked::after {
+	display: none;
+}
+
+/* Roll Next Code Block */
+.roll-next-container {
+	cursor: pointer;
+	opacity: 0.5;
+}
+
+.roll-next-container:hover {
+	opacity: 1;
+	background-color: var(--background-secondary);
+	border-radius: 4px;
 }

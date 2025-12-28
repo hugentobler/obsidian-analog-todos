@@ -59,18 +59,18 @@ if (import.meta.vitest) {
 			});
 
 			it("adds counter for duplicates", () => {
-				expect(formatArchivedFileName("now", "2024-12-26", "2024-12-26", 2)).toBe(
-					"Now 2024-12-26~2024-12-26 (2).md",
-				);
-				expect(formatArchivedFileName("next", "2024-12-26", "2024-12-26", 3)).toBe(
-					"Next 2024-12-26~2024-12-26 (3).md",
-				);
+				expect(
+					formatArchivedFileName("now", "2024-12-26", "2024-12-26", 2),
+				).toBe("Now 2024-12-26~2024-12-26 (2).md");
+				expect(
+					formatArchivedFileName("next", "2024-12-26", "2024-12-26", 3),
+				).toBe("Next 2024-12-26~2024-12-26 (3).md");
 			});
 
 			it("ignores counter of 1", () => {
-				expect(formatArchivedFileName("now", "2024-12-20", "2024-12-26", 1)).toBe(
-					"Now 2024-12-20~2024-12-26.md",
-				);
+				expect(
+					formatArchivedFileName("now", "2024-12-20", "2024-12-26", 1),
+				).toBe("Now 2024-12-20~2024-12-26.md");
 			});
 		});
 	});

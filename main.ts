@@ -1,5 +1,6 @@
 import { Plugin } from "obsidian";
 import { registerCheckboxes } from "./src/checkboxes";
+import { registerCodeBlocks } from "./src/code-blocks";
 import { registerCommands } from "./src/commands";
 import { registerMenus } from "./src/menus";
 import { PageManager } from "./src/pages/page-manager";
@@ -21,6 +22,7 @@ export default class RollPlugin extends Plugin {
 		this.pageManager = new PageManager(this.app, () => this.settings);
 
 		registerCheckboxes(this);
+		registerCodeBlocks(this);
 		registerRibbonActions(this);
 		registerCommands(this);
 		registerMenus(this);

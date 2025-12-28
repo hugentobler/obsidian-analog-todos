@@ -2,7 +2,7 @@
  * Page manager - handles lifecycle for all page types
  */
 
-import { type App, MarkdownView, Notice, type TFile } from "obsidian";
+import { type App, Notice, type TFile } from "obsidian";
 import type { RollSettings } from "../settings";
 import { getTodayDate } from "../utils/dates";
 import { formatArchivedFileName } from "../utils/filenames";
@@ -136,7 +136,8 @@ export class PageManager {
 
 			// Open the new page
 			const newFile = this.app.vault.getAbstractFileByPath(pagePath) as TFile;
-			await this.openFileAndPositionCursor(newFile, template);
+			const leaf = this.app.workspace.getLeaf(false);
+			await leaf.openFile(newFile);
 
 			const taskCount = rolledSections.reduce(
 				(sum, s) => sum + s.tasks.length,
@@ -177,25 +178,9 @@ export class PageManager {
 		// Create new page
 		const template = buildPageTemplate(pageType, today);
 		const file = await this.app.vault.create(filePath, template);
-		await this.openFileAndPositionCursor(file, template);
-		new Notice(`Created new ${displayName} page`);
-	}
-
-	/**
-	 * Open a file and position cursor at end
-	 */
-	private async openFileAndPositionCursor(
-		file: TFile,
-		content: string,
-	): Promise<void> {
 		const leaf = this.app.workspace.getLeaf(false);
 		await leaf.openFile(file);
-
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (view?.editor) {
-			const lineCount = content.split("\n").length;
-			view.editor.setCursor({ line: lineCount - 1, ch: 0 });
-		}
+		new Notice(`Created new ${displayName} page`);
 	}
 
 	/**

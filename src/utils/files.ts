@@ -8,7 +8,10 @@
  * @param filePath - Full path to the file
  * @param folderPath - Plugin folder path (empty string = vault root)
  */
-export function isInPluginFolder(filePath: string, folderPath: string): boolean {
+export function isInPluginFolder(
+	filePath: string,
+	folderPath: string,
+): boolean {
 	// If no folder configured (vault root), check file is at root level
 	if (!folderPath) {
 		return !filePath.includes("/");
@@ -26,7 +29,9 @@ if (import.meta.vitest) {
 		});
 
 		it("returns true for file in subfolder", () => {
-			expect(isInPluginFolder("Roll/Archive/Now 2024-01-01.md", "Roll")).toBe(true);
+			expect(isInPluginFolder("Roll/Archive/Now 2024-01-01.md", "Roll")).toBe(
+				true,
+			);
 		});
 
 		it("returns false for file in different folder", () => {
