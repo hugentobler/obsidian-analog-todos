@@ -4,8 +4,6 @@
 
 export type PageType = "now" | "next";
 
-export const PAGE_TYPES: PageType[] = ["now", "next"];
-
 export const PAGE_CONFIG: Record<
 	PageType,
 	{ filename: string; displayName: string }
