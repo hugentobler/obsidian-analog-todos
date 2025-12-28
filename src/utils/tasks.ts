@@ -83,14 +83,6 @@ export function parseSections(content: string): Section[] {
 }
 
 /**
- * Parse tasks from markdown content (flat list, for backwards compatibility)
- */
-export function parseTasks(content: string): Task[] {
-	const sections = parseSections(content);
-	return sections.flatMap((s) => s.tasks);
-}
-
-/**
  * Filter sections that have at least one incomplete task
  * Returns sections with only incomplete tasks
  */
@@ -101,13 +93,6 @@ export function filterIncompleteSections(sections: Section[]): Section[] {
 			tasks: section.tasks.filter((t) => t.state === " " || t.state === "/"),
 		}))
 		.filter((section) => section.tasks.length > 0);
-}
-
-/**
- * Filter tasks that are incomplete (todo or in-progress)
- */
-export function filterIncomplete(tasks: Task[]): Task[] {
-	return tasks.filter((t) => t.state === " " || t.state === "/");
 }
 
 /**
@@ -275,20 +260,6 @@ if (import.meta.vitest) {
 			expect(result).toHaveLength(1);
 			expect(result[0].tasks).toHaveLength(2);
 			expect(result[0].tasks.map((t) => t.state)).toEqual([" ", "/"]);
-		});
-	});
-
-	describe("filterIncomplete", () => {
-		it("filters only incomplete tasks", () => {
-			const tasks: Task[] = [
-				{ line: 0, state: " ", text: "todo", indent: "", raw: "" },
-				{ line: 1, state: "x", text: "done", indent: "", raw: "" },
-				{ line: 2, state: "/", text: "wip", indent: "", raw: "" },
-			];
-
-			const incomplete = filterIncomplete(tasks);
-			expect(incomplete).toHaveLength(2);
-			expect(incomplete.map((t) => t.state)).toEqual([" ", "/"]);
 		});
 	});
 
